@@ -367,14 +367,16 @@ app.get("/", (req, res) => {
               margin:24px;
               display:flex;
               justify-content:center;
-              background:#342C2A; 
+              background:#342C2A;
+              color:#342C2A;
             }
             .card{
               max-width:640px;
               width:100%;
               text-align:center;
               padding:24px;
-              border:1px solid #fff;
+              border:1px;
+              background:#fff;
               border-radius:16px;
               box-shadow:0 2px 12px rgba(0,0,0,.06)
             }
@@ -384,7 +386,7 @@ app.get("/", (req, res) => {
               padding:12px 18px;
               border-radius:12px;
               border:0;
-              background:#fff;
+              background:#342C2A;
               color:#fff;
               text-decoration:none;
               font-weight:600
@@ -464,6 +466,7 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
 
