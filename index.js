@@ -367,14 +367,14 @@ app.get("/", (req, res) => {
               margin:24px;
               display:flex;
               justify-content:center;
-              background:#f8fafc; 
+              background:#342C2A; 
             }
             .card{
               max-width:640px;
               width:100%;
               text-align:center;
               padding:24px;
-              border:1px solid #e5e7eb;
+              border:1px solid #342C2A;
               border-radius:16px;
               box-shadow:0 2px 12px rgba(0,0,0,.06)
             }
@@ -464,6 +464,7 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
 
