@@ -384,7 +384,7 @@ app.get("/", (req, res) => {
               padding:12px 18px;
               border-radius:12px;
               border:0;
-              background:#342C2A;
+              background:#fff;
               color:#fff;
               text-decoration:none;
               font-weight:600
@@ -464,6 +464,7 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
 
