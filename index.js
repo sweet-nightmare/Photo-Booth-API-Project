@@ -363,15 +363,21 @@ app.get("/", (req, res) => {
         <style>
           body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;display:flex;justify-content:center}
           .card{max-width:640px;width:100%;text-align:center;padding:24px;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-          .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;border:0;background:#111;color:#fff;text-decoration:none;font-weight:600}
+          .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;border:0;background:#342C2A;color:#fff;text-decoration:none;font-weight:600}
           .btn:active{transform:translateY(1px)}
           .hint{color:#6b7280;font-size:14px;margin-top:8px}
+          /* --- Tambahan style avatar --- */
+          .avatar{width:120px;height:120px;border-radius:9999px;object-fit:cover;display:block;margin:0 auto 12px;border:2px solid #e5e7eb}
+          .title{margin:8px 0 4px}
+          .subtitle{margin:0 0 12px;color:#6b7280;font-size:14px}
         </style>
       </head>
       <body>
         <div class="card">
-          <h2>Photobooth — Pembayaran</h2>
-          <p>Klik tombol di bawah untuk membuat invoice otomatis dan menuju halaman Checkout.</p>
+          <!-- GAMBAR PROFIL DI SINI -->
+          <img class="avatar" src="premio_logo.jpg" alt="Profil">
+          <h2 class="title">Photobooth — Pembayaran</h2>
+          <p class="subtitle">Klik tombol di bawah untuk membuat invoice otomatis dan menuju halaman Checkout.</p>
           ${badge}
           <a class="btn" href="/pay-now">Lakukan Pembayaran</a>
         </div>
@@ -420,4 +426,5 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
