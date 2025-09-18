@@ -23,6 +23,12 @@ const PUBLIC_BASE_URL   = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, ""
 const DSLRBOOTH_API_URL = process.env.DSLRBOOTH_API_URL || "";
 const PORT              = process.env.PORT || 3000;
 
+// NEW: default payment methods (CSV), default ke QRIS saja biar langsung ke QRIS Checkout
+const DEFAULT_PAYMENT_METHODS = (process.env.DEFAULT_PAYMENT_METHODS || "QRIS")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
 const COOKIE_SECURE = PUBLIC_BASE_URL.startsWith("https");
 
 // ====== Utils ======
@@ -33,6 +39,14 @@ function signHmac({ clientId, requestId, requestTimestamp, requestTarget, digest
   if (digest) c += `\nDigest:${digest}`;
   const sig = crypto.createHmac("sha256", secret).update(c).digest();
   return "HMACSHA256=" + Buffer.from(sig).toString("base64");
+}
+
+// NEW: generator invoice format timestamp
+function makeInvoice() {
+  const d = new Date();
+  const pad = (n, w=2) => String(n).padStart(w, "0");
+  const ts = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(),3)}`;
+  return `INV-${ts}`;
 }
 
 // ====== DOKU API ======
@@ -158,7 +172,7 @@ app.post("/session", async (req, res) => {
   }
 });
 
-// Halaman QR praktis untuk operator (GET)
+// Halaman QR praktis untuk operator (GET) — tetap dipertahankan jika sewaktu-waktu butuh
 app.get("/pay/:invoice", async (req, res) => {
   try {
     const baseInv = req.params.invoice || `INV-${Date.now()}`;
@@ -275,7 +289,8 @@ app.get("/doku/callback", async (req, res) => {
     req.cookies?.doku_inv || ""; // fallback dari cookie
 
   if (!invoice) {
-    return res.status(400).send("Invoice tidak diketahui. Silakan ulangi dari QR / pastikan parameter ?invoice= ada di return URL.");
+    // NEW: kalau invoice tidak ada, arahkan balik ke home
+    return res.redirect("/?status=UNKNOWN");
   }
 
   try {
@@ -285,11 +300,18 @@ app.get("/doku/callback", async (req, res) => {
 
     if (status === "SUCCESS") {
       await triggerDslrBooth({ invoiceNumber: invoice, amount });
-      return res.send("Pembayaran sukses. Perintah print dikirim. Anda bisa menutup halaman ini.");
     }
-    return res.send(`Status: ${status}. Jika sudah membayar, tunggu beberapa detik lalu refresh.`);
+    // NEW: selalu redirect ke halaman utama dengan status + invoice
+    const u = new URL(PUBLIC_BASE_URL || "http://localhost:" + PORT);
+    u.searchParams.set("status", status || "UNKNOWN");
+    u.searchParams.set("invoice", invoice);
+    return res.redirect(u.toString());
   } catch (e) {
-    return res.status(500).send("Gagal cek status/trigger: " + (e?.message || "unknown error"));
+    // NEW: jika gagal cek status, tetap kembalikan ke home dgn info error
+    const u = new URL(PUBLIC_BASE_URL || "http://localhost:" + PORT);
+    u.searchParams.set("status", "ERROR");
+    u.searchParams.set("message", (e?.message || "unknown error"));
+    return res.redirect(u.toString());
   }
 });
 
@@ -320,9 +342,82 @@ app.post("/trigger/:invoice", async (req, res) => {
   }
 });
 
-app.get("/", (_req, res) => res.send("Middleware DOKU Checkout ⇄ dslrBooth aktif."));
+// ====== NEW: Halaman utama dengan tombol "Lakukan Pembayaran"
+app.get("/", (req, res) => {
+  const status = (req.query.status || "").toUpperCase();
+  const invoice = req.query.invoice || "";
+  const message = req.query.message || "";
+
+  const badge = status
+    ? `<div style="margin:12px auto;max-width:560px;padding:12px 16px;border-radius:12px;border:1px solid #ddd">
+        <b>Status:</b> ${status}${invoice ? ` &nbsp;•&nbsp; <b>Invoice:</b> ${invoice}` : ""}${message ? `<br/><small>${message}</small>` : ""}
+      </div>`
+    : "";
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(`
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Photobooth Payment</title>
+        <style>
+          body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;display:flex;justify-content:center}
+          .card{max-width:640px;width:100%;text-align:center;padding:24px;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+          .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;border:0;background:#111;color:#fff;text-decoration:none;font-weight:600}
+          .btn:active{transform:translateY(1px)}
+          .hint{color:#6b7280;font-size:14px;margin-top:8px}
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>Photobooth — Pembayaran</h2>
+          <p>Klik tombol di bawah untuk membuat invoice otomatis dan menuju halaman Checkout.</p>
+          ${badge}
+          <a class="btn" href="/pay-now">Lakukan Pembayaran</a>
+          <div class="hint">Invoice akan dibuat otomatis (format timestamp) & jumlah transaksi Rp 1</div>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+// ====== NEW: Endpoint ringkas — generate invoice & amount=1 lalu redirect ke Checkout DOKU
+app.get("/pay-now", async (req, res) => {
+  try {
+    if (!PUBLIC_BASE_URL) return res.status(500).send("PUBLIC_BASE_URL belum diset");
+    const invoice = makeInvoice();
+    const amount = 1; // Rp 1 sesuai requirement
+
+    const { data } = await dokuCreatePayment({
+      amount,
+      invoiceNumber: invoice,
+      callbackBase: PUBLIC_BASE_URL,
+      paymentMethodTypes: DEFAULT_PAYMENT_METHODS // QRIS by default
+    });
+
+    const payUrl = data?.response?.payment?.url;
+    if (!payUrl) return res.status(502).send("Gagal mendapatkan payment.url dari DOKU.");
+
+    // Taruh cookie invoice sebagai fallback (tidak wajib)
+    res.cookie("doku_inv", invoice, {
+      maxAge: 30 * 60 * 1000,
+      httpOnly: false,
+      sameSite: "Lax",
+      secure: COOKIE_SECURE
+    });
+
+    // Redirect langsung ke halaman checkout
+    return res.redirect(payUrl);
+  } catch (e) {
+    const status = e?.response?.status;
+    const data = e?.response?.data;
+    res.status(500).send("Gagal membuat pembayaran.\n" + (status ? `HTTP ${status}\n` : "") + (data ? JSON.stringify(data, null, 2) : e?.message || ""));
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
   console.log("DOKU_BASE_URL  =", DOKU_BASE_URL);
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
+  console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
