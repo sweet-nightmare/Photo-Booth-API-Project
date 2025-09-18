@@ -374,7 +374,6 @@ app.get("/", (req, res) => {
           <p>Klik tombol di bawah untuk membuat invoice otomatis dan menuju halaman Checkout.</p>
           ${badge}
           <a class="btn" href="/pay-now">Lakukan Pembayaran</a>
-          <div class="hint">Invoice akan dibuat otomatis (format timestamp) & jumlah transaksi Rp 1</div>
         </div>
       </body>
     </html>
@@ -421,3 +420,4 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
