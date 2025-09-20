@@ -460,12 +460,42 @@ app.get("/pay-now", async (req, res) => {
   }
 });
 
+// Change 20 Sept 2025
+app.get("/pay-now.json", async (req, res) => {
+  try {
+    if (!PUBLIC_BASE_URL) return res.status(500).json({ error: "PUBLIC_BASE_URL belum diset" });
+
+    const invoice = (function makeInvoice(){
+      const d = new Date(), p=(n,w=2)=>String(n).padStart(w,"0");
+      return `INV-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${p(d.getMilliseconds(),3)}`;
+    })();
+
+    const amount = 1;
+    const paymentMethodTypes = (process.env.DEFAULT_PAYMENT_METHODS || "QRIS").split(",").map(s=>s.trim()).filter(Boolean);
+
+    const { data } = await dokuCreatePayment({
+      amount,
+      invoiceNumber: invoice,
+      callbackBase: PUBLIC_BASE_URL,
+      paymentMethodTypes
+    });
+
+    const payment_url = data?.response?.payment?.url;
+    if (!payment_url) return res.status(502).json({ error: "no payment.url from DOKU", raw: data });
+
+    res.json({ ok: true, invoice, amount, payment_url });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e?.response?.data || e?.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
   console.log("DOKU_BASE_URL  =", DOKU_BASE_URL);
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
 
