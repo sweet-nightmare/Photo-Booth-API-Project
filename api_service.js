@@ -340,6 +340,22 @@ app.post("/trigger/:invoice", async (req, res) => {
   }
 });
 
+// === BOOTH DONE HOOK (opsional) ===
+let lastBoothDone = { at: 0, invoice: null };
+
+// endpoint dipanggil oleh dslrBooth setelah sesi selesai
+app.get("/booth/done", (req, res) => {
+  const invoice = req.query.invoice || null;
+  lastBoothDone = { at: Date.now(), invoice };
+  console.log(">> [BOOTH] DONE received:", lastBoothDone);
+  res.json({ ok: true });
+});
+
+// endpoint agar Electron bisa polling status done
+app.get("/booth/done/status", (req, res) => {
+  res.json(lastBoothDone);
+});
+
 // Halaman backend (opsional; Electron tidak memakai ini)
 app.get("/", (req, res) => {
   const status = (req.query.status || "").toUpperCase();
@@ -440,5 +456,6 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
