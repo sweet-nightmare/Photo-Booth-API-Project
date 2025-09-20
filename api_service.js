@@ -15,6 +15,7 @@ app.use(cookieParser());
 app.use("/static", express.static("public", { maxAge: "1d" }));
 
 // ====== ENV & Config ======
+const AUTO_TRIGGER_DSLR = String(process.env.AUTO_TRIGGER_DSLR || "false").toLowerCase() === "true";
 const DOKU_BASE_URL     = (process.env.DOKU_BASE_URL || "https://api.doku.com").replace(/\/+$/, "");
 const DOKU_CLIENT_ID    = process.env.DOKU_CLIENT_ID || "";
 const DOKU_SECRET_KEY   = process.env.DOKU_SECRET_KEY || "";
@@ -257,11 +258,15 @@ app.post("/doku/callback", async (req, res) => {
     console.log(">> [CALLBACK] parsed:", { invoiceNumber, amount, status });
 
     if (status === "SUCCESS") {
-      try {
-        const trig = await triggerDslrBooth({ invoiceNumber, amount });
-        console.log(">> [CALLBACK] dslrBooth triggered:", trig);
-      } catch (e) {
-        console.error(">> [CALLBACK] gagal trigger dslrBooth:", e?.response?.data || e?.message);
+      if (AUTO_TRIGGER_DSLR) {
+        try {
+          const trig = await triggerDslrBooth({ invoiceNumber, amount });
+          console.log(">> [CALLBACK] dslrBooth triggered:", trig);
+        } catch (e) {
+          console.error(">> [CALLBACK] gagal trigger dslrBooth:", e?.response?.data || e?.message);
+        }
+      } else {
+        console.log(">> [CALLBACK] SUCCESS, auto-trigger DISABLED (manual via Electron)");
       }
     }
     return res.status(200).json({ ok: true });
@@ -290,7 +295,11 @@ app.get("/doku/callback", async (req, res) => {
     const amount = data?.order?.amount || data?.transaction?.amount || 0;
 
     if (status === "SUCCESS") {
-      await triggerDslrBooth({ invoiceNumber: invoice, amount });
+      if (AUTO_TRIGGER_DSLR) {
+        await triggerDslrBooth({ invoiceNumber: invoice, amount });
+      } else {
+        console.log(">> [RETURN] SUCCESS, auto-trigger DISABLED (manual via Electron)");
+      }
     }
     const u = new URL(PUBLIC_BASE_URL || "http://localhost:" + PORT);
     u.searchParams.set("status", status || "UNKNOWN");
@@ -431,4 +440,5 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
