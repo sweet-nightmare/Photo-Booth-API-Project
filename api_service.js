@@ -358,11 +358,11 @@ app.get("/", (req, res) => {
       <body>
         <div class="card">
           <img class="logo" src="/static/premio_logo.jpg" alt="Profil">
-          <h2>Premio Photobooth (Backend)</h2>
-          <p>Halaman ini untuk akses browser biasa. Aplikasi kiosk Electron memakai halaman lokal sendiri.</p>
+          <h2>Premio Photobooth</h2>
+          <p>Selamat datang di website Premio Photobooth</p>
           ${badge}
-          <a class="btn" href="/pay-now">Lakukan Pembayaran (Redirect DOKU)</a>
-          <div class="hint">Electron sebaiknya pakai endpoint JSON: <code>/pay-now.json</code></div>
+          <!-- <a class="btn" href="/pay-now">Lakukan Pembayaran (Redirect DOKU)</a> -->
+          <!-- <div class="hint">Electron sebaiknya pakai endpoint JSON: <code>/pay-now.json</code></div> -->
         </div>
       </body>
     </html>
@@ -431,3 +431,4 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
