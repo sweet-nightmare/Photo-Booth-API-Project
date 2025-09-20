@@ -1,6 +1,4 @@
 // api_service.js — Middleware DOKU Checkout ⇄ dslrBooth
-// npm i express axios uuid qrcode dotenv cookie-parser
-
 const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
@@ -495,6 +493,7 @@ app.listen(PORT, () => {
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
+
 
 
 
