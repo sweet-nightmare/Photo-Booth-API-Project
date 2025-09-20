@@ -1,4 +1,8 @@
 // api_service.js — Middleware DOKU Checkout ⇄ dslrBooth (BACKEND)
+
+///////////////////////////////
+// 1) IMPORTS & APP SETUP
+///////////////////////////////
 const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
@@ -14,7 +18,10 @@ app.use(cookieParser());
 // Serve file statis dari folder /public (mis. logo)
 app.use("/static", express.static("public", { maxAge: "1d" }));
 
-// ====== ENV & Config ======
+
+///////////////////////////////
+// 2) ENV & KONSTANTA
+///////////////////////////////
 const AUTO_TRIGGER_DSLR = String(process.env.AUTO_TRIGGER_DSLR || "false").toLowerCase() === "true";
 const DOKU_BASE_URL     = (process.env.DOKU_BASE_URL || "https://api.doku.com").replace(/\/+$/, "");
 const DOKU_CLIENT_ID    = process.env.DOKU_CLIENT_ID || "";
@@ -29,7 +36,10 @@ const DEFAULT_PAYMENT_METHODS = (process.env.DEFAULT_PAYMENT_METHODS || "QRIS")
 
 const COOKIE_SECURE = PUBLIC_BASE_URL.startsWith("https");
 
-// ====== Utils ======
+
+///////////////////////////////
+// 3) UTILITIES
+///////////////////////////////
 const nowIso = () => new Date().toISOString().slice(0, 19) + "Z";
 const digestBase64 = (s) => Buffer.from(crypto.createHash("sha256").update(s, "utf-8").digest()).toString("base64");
 
@@ -47,7 +57,10 @@ function makeInvoice() {
   return `INV-${ts}`;
 }
 
-// ====== DOKU API helpers ======
+
+///////////////////////////////
+// 4) DOKU API HELPERS
+///////////////////////////////
 async function dokuCreatePayment({ amount, invoiceNumber, customer, callbackBase, paymentMethodTypes }) {
   const requestId = uuidv4();
   const requestTimestamp = nowIso();
@@ -141,9 +154,106 @@ async function triggerDslrBooth({ invoiceNumber, amount }) {
   return data ?? { ok: true };
 }
 
-// ====== ROUTES ======
 
-// JSON session (tetap untuk fleksibilitas)
+///////////////////////////////
+// 5) ROUTES
+///////////////////////////////
+
+// (A) ROOT — halaman backend (opsional; Electron tidak memakai ini)
+app.get("/", (req, res) => {
+  const status = (req.query.status || "").toUpperCase();
+  const invoice = req.query.invoice || "";
+  const message = req.query.message || "";
+  const badge = status
+    ? `<div style="margin:12px auto;max-width:560px;padding:12px 16px;border-radius:12px;border:1px solid #ddd">
+         <b>Status:</b> ${status}${invoice ? ` &nbsp;•&nbsp; <b>Invoice:</b> ${invoice}` : ""}${message ? `<br/><small>${message}</small>` : ""}
+       </div>`
+    : "";
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(`
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Premio Photobooth — Backend</title>
+        <style>
+          body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;display:flex;justify-content:center;background:#342C2A;color:#342C2A}
+          .card{max-width:640px;width:100%;text-align:center;padding:24px;border:1px;background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+          .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;border:0;background:#342C2A;color:#fff;text-decoration:none;font-weight:600}
+          .hint{color:#6b7280;font-size:14px;margin-top:8px}
+          .logo{width:140px;height:140px;object-fit:cover;display:block;margin:0 auto 12px;border:2px solid #e5e7eb;border-radius:0}
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <img class="logo" src="/static/premio_logo.jpg" alt="Profil">
+          <h2>Premio Photobooth</h2>
+          <p>Selamat datang di website Premio Photobooth</p>
+          ${badge}
+          <!-- <a class="btn" href="/pay-now">Lakukan Pembayaran (Redirect DOKU)</a> -->
+          <!-- <div class="hint">Electron sebaiknya pakai endpoint JSON: <code>/pay-now.json</code></div> -->
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+// (B) Redirect langsung ke DOKU (untuk browser biasa)
+app.get("/pay-now", async (req, res) => {
+  try {
+    if (!PUBLIC_BASE_URL) return res.status(500).send("PUBLIC_BASE_URL belum diset");
+    const invoice = makeInvoice();
+    const amount = 1;
+
+    const { data } = await dokuCreatePayment({
+      amount,
+      invoiceNumber: invoice,
+      callbackBase: PUBLIC_BASE_URL,
+      paymentMethodTypes: DEFAULT_PAYMENT_METHODS
+    });
+
+    const payUrl = data?.response?.payment?.url;
+    if (!payUrl) return res.status(502).send("Gagal mendapatkan payment.url dari DOKU.");
+
+    res.cookie("doku_inv", invoice, {
+      maxAge: 30 * 60 * 1000,
+      httpOnly: false,
+      sameSite: "Lax",
+      secure: COOKIE_SECURE
+    });
+
+    return res.redirect(payUrl);
+  } catch (e) {
+    const status = e?.response?.status;
+    const data = e?.response?.data;
+    res.status(500).send("Gagal membuat pembayaran.\n" + (status ? `HTTP ${status}\n` : "") + (data ? JSON.stringify(data, null, 2) : e?.message || ""));
+  }
+});
+
+// (C) JSON untuk Electron (membuat sesi pembayaran)
+app.get("/pay-now.json", async (req, res) => {
+  try {
+    if (!PUBLIC_BASE_URL) return res.status(500).json({ error: "PUBLIC_BASE_URL belum diset" });
+    const invoice = makeInvoice();
+    const amount = 1;
+    const paymentMethodTypes = DEFAULT_PAYMENT_METHODS;
+
+    const { data } = await dokuCreatePayment({
+      amount,
+      invoiceNumber: invoice,
+      callbackBase: PUBLIC_BASE_URL,
+      paymentMethodTypes
+    });
+
+    const payment_url = data?.response?.payment?.url;
+    if (!payment_url) return res.status(502).json({ error: "no payment.url from DOKU", raw: data });
+
+    res.json({ ok: true, invoice, amount, payment_url });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e?.response?.data || e?.message });
+  }
+});
+
+// (D) JSON session (fleksibel)
 app.post("/session", async (req, res) => {
   try {
     const { amount, invoice_number, customer, payment_method_types } = req.body || {};
@@ -168,7 +278,7 @@ app.post("/session", async (req, res) => {
   }
 });
 
-// Halaman QR (fallback operator)
+// (E) Halaman QR (fallback operator)
 app.get("/pay/:invoice", async (req, res) => {
   try {
     const baseInv = req.params.invoice || `INV-${Date.now()}`;
@@ -215,7 +325,34 @@ app.get("/pay/:invoice", async (req, res) => {
   }
 });
 
-// CALLBACK dari DOKU (POST S2S)
+// (F) Cek status (JSON)
+app.get("/status/:invoice", async (req, res) => {
+  try {
+    const data = await dokuGetStatus(req.params.invoice);
+    res.json({ ok: true, status: data?.transaction?.status, raw: data });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal cek status", detail: err?.response?.data || err?.message });
+  }
+});
+
+// (G) Trigger manual photobooth (opsional)
+app.post("/trigger/:invoice", async (req, res) => {
+  try {
+    const inv = req.params.invoice;
+    const data = await dokuGetStatus(inv);
+    const status = String(data?.transaction?.status || "").toUpperCase();
+    const amount = data?.order?.amount || data?.transaction?.amount || 0;
+    if (status === "SUCCESS") {
+      const trig = await triggerDslrBooth({ invoiceNumber: inv, amount });
+      return res.json({ ok: true, triggered: true, response: trig });
+    }
+    res.json({ ok: true, triggered: false, status });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.response?.data || e?.message });
+  }
+});
+
+// (H) CALLBACK dari DOKU (POST S2S)
 app.post("/doku/callback", async (req, res) => {
   try {
     console.log(">> [CALLBACK] headers:", {
@@ -276,7 +413,7 @@ app.post("/doku/callback", async (req, res) => {
   }
 });
 
-// Landing "Back to Merchant" → redirect ke halaman utama backend (untuk user browser biasa)
+// (I) Landing "Back to Merchant" → redirect ke halaman utama backend
 app.get("/doku/callback", async (req, res) => {
   const invoice =
     req.query.invoice ||
@@ -313,34 +450,7 @@ app.get("/doku/callback", async (req, res) => {
   }
 });
 
-// Cek status (JSON)
-app.get("/status/:invoice", async (req, res) => {
-  try {
-    const data = await dokuGetStatus(req.params.invoice);
-    res.json({ ok: true, status: data?.transaction?.status, raw: data });
-  } catch (err) {
-    res.status(500).json({ error: "Gagal cek status", detail: err?.response?.data || err?.message });
-  }
-});
-
-// Trigger manual photobooth (opsional)
-app.post("/trigger/:invoice", async (req, res) => {
-  try {
-    const inv = req.params.invoice;
-    const data = await dokuGetStatus(inv);
-    const status = String(data?.transaction?.status || "").toUpperCase();
-    const amount = data?.order?.amount || data?.transaction?.amount || 0;
-    if (status === "SUCCESS") {
-      const trig = await triggerDslrBooth({ invoiceNumber: inv, amount });
-      return res.json({ ok: true, triggered: true, response: trig });
-    }
-    res.json({ ok: true, triggered: false, status });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e?.response?.data || e?.message });
-  }
-});
-
-// === BOOTH DONE HOOK (opsional) ===
+// (J) === BOOTH DONE HOOK (opsional) ===
 let lastBoothDone = { at: 0, invoice: null };
 
 // endpoint dipanggil oleh dslrBooth setelah sesi selesai
@@ -356,106 +466,13 @@ app.get("/booth/done/status", (req, res) => {
   res.json(lastBoothDone);
 });
 
-// Halaman backend (opsional; Electron tidak memakai ini)
-app.get("/", (req, res) => {
-  const status = (req.query.status || "").toUpperCase();
-  const invoice = req.query.invoice || "";
-  const message = req.query.message || "";
-  const badge = status
-    ? `<div style="margin:12px auto;max-width:560px;padding:12px 16px;border-radius:12px;border:1px solid #ddd">
-         <b>Status:</b> ${status}${invoice ? ` &nbsp;•&nbsp; <b>Invoice:</b> ${invoice}` : ""}${message ? `<br/><small>${message}</small>` : ""}
-       </div>`
-    : "";
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.end(`
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <title>Premio Photobooth — Backend</title>
-        <style>
-          body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;display:flex;justify-content:center;background:#342C2A;color:#342C2A}
-          .card{max-width:640px;width:100%;text-align:center;padding:24px;border:1px;background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-          .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;border:0;background:#342C2A;color:#fff;text-decoration:none;font-weight:600}
-          .hint{color:#6b7280;font-size:14px;margin-top:8px}
-          .logo{width:140px;height:140px;object-fit:cover;display:block;margin:0 auto 12px;border:2px solid #e5e7eb;border-radius:0}
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <img class="logo" src="/static/premio_logo.jpg" alt="Profil">
-          <h2>Premio Photobooth</h2>
-          <p>Selamat datang di website Premio Photobooth</p>
-          ${badge}
-          <!-- <a class="btn" href="/pay-now">Lakukan Pembayaran (Redirect DOKU)</a> -->
-          <!-- <div class="hint">Electron sebaiknya pakai endpoint JSON: <code>/pay-now.json</code></div> -->
-        </div>
-      </body>
-    </html>
-  `);
-});
 
-// Redirect langsung ke DOKU (untuk browser biasa)
-app.get("/pay-now", async (req, res) => {
-  try {
-    if (!PUBLIC_BASE_URL) return res.status(500).send("PUBLIC_BASE_URL belum diset");
-    const invoice = makeInvoice();
-    const amount = 1;
-
-    const { data } = await dokuCreatePayment({
-      amount,
-      invoiceNumber: invoice,
-      callbackBase: PUBLIC_BASE_URL,
-      paymentMethodTypes: DEFAULT_PAYMENT_METHODS
-    });
-
-    const payUrl = data?.response?.payment?.url;
-    if (!payUrl) return res.status(502).send("Gagal mendapatkan payment.url dari DOKU.");
-
-    res.cookie("doku_inv", invoice, {
-      maxAge: 30 * 60 * 1000,
-      httpOnly: false,
-      sameSite: "Lax",
-      secure: COOKIE_SECURE
-    });
-
-    return res.redirect(payUrl);
-  } catch (e) {
-    const status = e?.response?.status;
-    const data = e?.response?.data;
-    res.status(500).send("Gagal membuat pembayaran.\n" + (status ? `HTTP ${status}\n` : "") + (data ? JSON.stringify(data, null, 2) : e?.message || ""));
-  }
-});
-
-// JSON untuk Electron
-app.get("/pay-now.json", async (req, res) => {
-  try {
-    if (!PUBLIC_BASE_URL) return res.status(500).json({ error: "PUBLIC_BASE_URL belum diset" });
-    const invoice = makeInvoice();
-    const amount = 1;
-    const paymentMethodTypes = DEFAULT_PAYMENT_METHODS;
-
-    const { data } = await dokuCreatePayment({
-      amount,
-      invoiceNumber: invoice,
-      callbackBase: PUBLIC_BASE_URL,
-      paymentMethodTypes
-    });
-
-    const payment_url = data?.response?.payment?.url;
-    if (!payment_url) return res.status(502).json({ error: "no payment.url from DOKU", raw: data });
-
-    res.json({ ok: true, invoice, amount, payment_url });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: e?.response?.data || e?.message });
-  }
-});
-
+///////////////////////////////
+// 6) START SERVER
+///////////////////////////////
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
   console.log("DOKU_BASE_URL  =", DOKU_BASE_URL);
   console.log("PUBLIC_BASE_URL=", PUBLIC_BASE_URL);
   console.log("DEFAULT_PAYMENT_METHODS =", DEFAULT_PAYMENT_METHODS.join(","));
 });
-
-
-
