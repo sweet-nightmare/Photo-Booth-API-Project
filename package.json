@@ -2,9 +2,9 @@
   "name": "doku_payment_nodejs",
   "version": "1.0.0",
   "description": "example usage of doku api to generate payment url with nodejs",
-  "main": "index.js",
+  "main": "api_service.js",
   "scripts": {
-    "api-service": "nodemon index.js",
+    "api-service": "nodemon api_service.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
